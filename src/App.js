@@ -1,281 +1,221 @@
 import React, { useState } from "react";
+// Librería para distribuciones continuas (exponencial, normal, etc.)
+import { randomExponential } from "d3-random"; 
+// Librería para distribuciones discretas (Poisson, Binomial, etc.)
+import random from "random"; 
+// Librería de gráficas Recharts
+import {
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  BarChart,
+  Bar,
+  ResponsiveContainer,
+} from "recharts";
 
-export default function GeneradorPseudo() {
-  // === ESTADOS PRINCIPALES ===
-  const [metodo, setMetodo] = useState(null); // Guarda el método elegido ("cuadrados" o "multiplicador")
-  const [seed, setSeed] = useState(""); // Semilla inicial (X₀)
-  const [d, setD] = useState(""); // Número de dígitos que se tomarán en cada iteración
-  const [cantidad, setCantidad] = useState(""); // Cantidad de números a generar
-  const [multiplicador, setMultiplicador] = useState(""); // Constante A (para el método multiplicador)
-  const [resultados, setResultados] = useState([]); // Guarda la tabla de resultados generados
-  const [showModal, setShowModal] = useState(false); // Controla la visualización del modal
-  const [detalles, setDetalles] = useState([]); // Resultados de las pruebas estadísticas
+export default function SimulacionChocolates() {
+  // === ESTADOS PARA LOS PARÁMETROS DE ENTRADA ===
+  const [mediaProduccion, setMediaProduccion] = useState(""); // Media de producción (horas)
+  const [mediaEmpaquetado, setMediaEmpaquetado] = useState(""); // Media de empaquetado (horas)
+  const [lambdaDefectos, setLambdaDefectos] = useState(""); // Defectos promedio (λ de Poisson)
+  const [lotes, setLotes] = useState(""); // Número de lotes a simular
+  const [resultados, setResultados] = useState(null); // Resultados globales de la simulación
+  const [detalleLotes, setDetalleLotes] = useState([]); // Detalle por cada lote (tabla y gráficas)
 
-  // === TEXTOS EXPLICATIVOS DE LOS MÉTODOS ===
-  const explicaciones = {
-    cuadrados:
-      "El método de Cuadrados Medios eleva al cuadrado la semilla (X₀) y toma los dígitos centrales como nueva semilla. El número pseudoaleatorio es 0.Xn+1.",
-    multiplicador:
-      "El método de Multiplicador Constante multiplica la semilla (X₀) por una constante (A) y toma los dígitos centrales. Así se generan valores pseudoaleatorios.",
-  };
+  // === FUNCIÓN PRINCIPAL DE SIMULACIÓN ===
+  const simular = () => {
+    const n = parseInt(lotes); // Número de lotes a simular
+    // Distribución exponencial para tiempos de producción y empaquetado
+    const prodExp = randomExponential(1 / parseFloat(mediaProduccion));
+    const empaqExp = randomExponential(1 / parseFloat(mediaEmpaquetado));
+    // Distribución de Poisson para defectos
+    const poissonDef = random.poisson(parseFloat(lambdaDefectos));
 
-  // === ABRIR EL MODAL ===
-  const abrirModal = (m) => {
-    setMetodo(m);
-    setShowModal(true);
-    setResultados([]); // Reinicia resultados previos
-    setDetalles([]); // Limpia pruebas estadísticas
-    setSeed("");
-    setD("");
-    setCantidad("");
-    setMultiplicador("");
-  };
+    // Acumuladores para métricas globales
+    let tiempoProduccionTotal = 0;
+    let tiempoEmpaquetadoTotal = 0;
+    let defectuososTotales = 0;
+    let tiempoSistemaTotal = 0;
+    let detalle = []; // Array con resultados por lote
 
-  // === AL PRESIONAR "GENERAR" ===
-  const generar = () => {
-    let Xi = parseInt(seed);
-    let D = parseInt(d);
-    let n = parseInt(cantidad);
-    let res = []; // Resultados paso a paso (tabla)
-    let numeros = []; // Lista de ri (números pseudoaleatorios en [0,1])
+    // Simulación lote por lote
+    for (let i = 0; i < n; i++) {
+      const tProd = prodExp(); // Tiempo aleatorio de producción
+      const tEmp = empaqExp(); // Tiempo aleatorio de empaquetado
+      const defectos = poissonDef(); // Número de defectos
 
-    // Método de Cuadrados Medios
-    if (metodo === "cuadrados") {
-      for (let i = 0; i < n; i++) {
-        let Yi = (Xi ** 2).toString(); // Elevar al cuadrado
-        let len = Yi.length;
-        let start = Math.floor((len - D) / 2); // Seleccionar dígitos centrales
-        let Xi1 = Yi.substr(start, D);
-        let ri = parseFloat("0." + Xi1); // Convertir a número en [0,1]
-        res.push({ n: i, Xi, Yi, Xi1, ri });
-        numeros.push(ri);
-        Xi = parseInt(Xi1, 10);
-      }
+      // Acumular resultados globales
+      tiempoProduccionTotal += tProd;
+      tiempoEmpaquetadoTotal += tEmp;
+      defectuososTotales += defectos;
+      tiempoSistemaTotal += tProd + tEmp;
+
+      // Guardar detalle del lote
+      detalle.push({
+        lote: i + 1,
+        produccion: tProd.toFixed(2), // Tiempo de producción con 2 decimales
+        empaquetado: tEmp.toFixed(2), // Tiempo de empaquetado
+        total: (tProd + tEmp).toFixed(2), // Tiempo total del lote
+        defectos, // Chocolates defectuosos
+      });
     }
 
-    // Método de Multiplicador Constante
-    else if (metodo === "multiplicador") {
-      let A = parseInt(multiplicador);
-      for (let i = 0; i < n; i++) {
-        let Yi = (Xi * A).toString(); // Multiplicar por constante
-        let len = Yi.length;
-        let start = Math.floor((len - D) / 2);
-        let Xi1 = Yi.substr(start, D);
-        let ri = parseFloat("0." + Xi1);
-        res.push({ n: i, Xi, Yi, Xi1, ri });
-        numeros.push(ri);
-        Xi = parseInt(Xi1, 10);
-      }
-    }
+    // Guardar el detalle en estado
+    setDetalleLotes(detalle);
 
-    setResultados(res);
-    ejecutarPruebas(numeros); // Ejecuta las pruebas estadísticas
-    setShowModal(false); // Cierra modal
+    // Calcular métricas globales
+    setResultados({
+      lotesSimulados: n,
+      tiempoPromedioProduccion: (tiempoProduccionTotal / n).toFixed(2),
+      tiempoPromedioEmpaquetado: (tiempoEmpaquetadoTotal / n).toFixed(2),
+      tiempoPromedioSistema: (tiempoSistemaTotal / n).toFixed(2),
+      defectosTotales: defectuososTotales,
+      promedioDefectos: (defectuososTotales / n).toFixed(2),
+    });
   };
 
-  // === TODAS LAS PRUEBAS ESTADÍSTICAS ===
-  const ejecutarPruebas = (nums) => {
-    let resultados = [];
-
-    // --- Prueba de Media ---
-    const media = nums.reduce((a, b) => a + b, 0) / nums.length;
-    resultados.push({
-      titulo: "Prueba de Media",
-      calculos: `📊 Media obtenida = ${media.toFixed(
-        4
-      )}, rango aceptable [0.45, 0.55]`,
-      decision: media >= 0.45 && media <= 0.55 ? "✅ Aprobada" : "❌ Rechazada",
-      explicacion:
-        "ℹ️ Verifica que los números estén centrados alrededor de 0.5, lo esperado en una distribución uniforme en [0,1].",
-    });
-
-    // --- Prueba de Varianza ---
-    const mediaVar = media;
-    const varianza =
-      nums.reduce((a, b) => a + (b - mediaVar) ** 2, 0) / (nums.length - 1);
-    const esperadoVar = 1 / 12; // Varianza teórica ≈ 0.0833
-    resultados.push({
-      titulo: "Prueba de Varianza",
-      calculos: `📊 Varianza obtenida = ${varianza.toFixed(
-        4
-      )}, valor esperado ≈ ${esperadoVar.toFixed(4)}`,
-      decision:
-        varianza >= esperadoVar - 0.01 && varianza <= esperadoVar + 0.01
-          ? "✅ Aprobada"
-          : "❌ Rechazada",
-      explicacion:
-        "ℹ️ Evalúa si la dispersión de los números coincide con la varianza teórica de una distribución uniforme.",
-    });
-
-    // --- Prueba de Uniformidad (Chi² con 6 intervalos) ---
-    let intervalos = Array(6).fill(0);
-    nums.forEach((x) => {
-      let idx = Math.min(5, Math.floor(x * 6));
-      intervalos[idx]++;
-    });
-    const esperadoUni = nums.length / 6;
-    const chi2 = intervalos.reduce(
-      (sum, obs) => sum + (obs - esperadoUni) ** 2 / esperadoUni,
-      0
-    );
-    resultados.push({
-      titulo: "Prueba de Uniformidad (Chi² con 5 g.l.)",
-      calculos: `📊 Frecuencias observadas = [${intervalos.join(
-        ", "
-      )}], valor χ² = ${chi2.toFixed(4)}, valor crítico = 11.07`,
-      decision: chi2 < 11.07 ? "✅ Aprobada" : "❌ Rechazada",
-      explicacion:
-        "ℹ️ Revisa si los números se distribuyen de manera uniforme en intervalos. Se usa Chi² para comparar frecuencias observadas contra esperadas.",
-    });
-
-    // --- Prueba de Independencia (Corridas) ---
-    let corridas = 1;
-    for (let i = 1; i < nums.length; i++) {
-      if ((nums[i] > media) !== (nums[i - 1] > media)) corridas++;
-    }
-    const esperadoCorr = (2 * nums.length - 1) / 3;
-    resultados.push({
-      titulo: "Prueba de Independencia (Corridas)",
-      calculos: `📊 Número de corridas = ${corridas}, valor esperado ≈ ${esperadoCorr.toFixed(
-        2
-      )}, rango aceptable [${(esperadoCorr * 0.8).toFixed(
-        2
-      )}, ${(esperadoCorr * 1.2).toFixed(2)}]`,
-      decision:
-        corridas >= esperadoCorr * 0.8 && corridas <= esperadoCorr * 1.2
-          ? "✅ Aprobada"
-          : "❌ Rechazada",
-      explicacion:
-        "ℹ️ Comprueba si los números se distribuyen aleatoriamente alrededor de la media, midiendo las 'corridas' (secuencias por encima o debajo).",
-    });
-
-    setDetalles(resultados);
+  // === FUNCIÓN PARA LIMPIAR DATOS ===
+  const limpiar = () => {
+    setMediaProduccion("");
+    setMediaEmpaquetado("");
+    setLambdaDefectos("");
+    setLotes("");
+    setResultados(null);
+    setDetalleLotes([]);
   };
 
-  // === RENDER ===
   return (
-    <div className="p-6 max-w-4xl mx-auto text-center">
+    <div className="p-6 max-w-5xl mx-auto text-center">
       <h1 className="text-2xl font-bold mb-6 text-blue-700">
-        Generador Pseudoaleatorio
+        Simulación de Producción y Empaquetado de Chocolates 🍫
       </h1>
 
-      {/* Botones para elegir método */}
-      <div className="flex gap-4 justify-center">
+      {/* === FORMULARIO DE ENTRADA DE PARÁMETROS === */}
+      <div className="flex flex-col gap-6 text-left bg-white shadow-md p-6 rounded-lg">
+        {/* Media de Producción */}
+        <label>
+          <span className="block text-sm font-semibold text-gray-800">
+            Media de Producción (horas)
+          </span>
+          <span className="block text-xs text-gray-600 mb-1">
+            Tiempo promedio en horas que tarda un lote en producirse.
+          </span>
+          <input
+            type="number"
+            value={mediaProduccion}
+            onChange={(e) => setMediaProduccion(e.target.value)}
+            className="border rounded p-2 w-full"
+          />
+        </label>
+
+        {/* Media de Empaquetado */}
+        <label>
+          <span className="block text-sm font-semibold text-gray-800">
+            Media de Empaquetado (horas)
+          </span>
+          <span className="block text-xs text-gray-600 mb-1">
+            Tiempo promedio en horas que tarda un lote en empaquetarse.
+          </span>
+          <input
+            type="number"
+            value={mediaEmpaquetado}
+            onChange={(e) => setMediaEmpaquetado(e.target.value)}
+            className="border rounded p-2 w-full"
+          />
+        </label>
+
+        {/* Defectos promedio por lote */}
+        <label>
+          <span className="block text-sm font-semibold text-gray-800">
+            Defectos promedio por lote (λ)
+          </span>
+          <span className="block text-xs text-gray-600 mb-1">
+            Número esperado de chocolates defectuosos por lote.
+          </span>
+          <input
+            type="number"
+            value={lambdaDefectos}
+            onChange={(e) => setLambdaDefectos(e.target.value)}
+            className="border rounded p-2 w-full"
+          />
+        </label>
+
+        {/* Número de lotes */}
+        <label>
+          <span className="block text-sm font-semibold text-gray-800">
+            Número de lotes a simular
+          </span>
+          <span className="block text-xs text-gray-600 mb-1">
+            Cantidad de lotes a incluir en la simulación.
+          </span>
+          <input
+            type="number"
+            value={lotes}
+            onChange={(e) => setLotes(e.target.value)}
+            className="border rounded p-2 w-full"
+          />
+        </label>
+      </div>
+
+      {/* === BOTONES === */}
+      <div className="flex justify-center gap-4 mt-6">
         <button
-          onClick={() => abrirModal("cuadrados")}
-          className="bg-blue-200 hover:bg-blue-300 px-5 py-2 rounded-lg font-medium"
+          onClick={simular}
+          className="px-6 py-2 bg-blue-300 hover:bg-blue-400 rounded font-medium"
         >
-          Cuadrados Medios
+          Simular
         </button>
         <button
-          onClick={() => abrirModal("multiplicador")}
-          className="bg-blue-200 hover:bg-blue-300 px-5 py-2 rounded-lg font-medium"
+          onClick={limpiar}
+          className="px-6 py-2 bg-red-300 hover:bg-red-400 rounded font-medium"
         >
-          Multiplicador Constante
+          Limpiar
         </button>
       </div>
 
-      {/* Modal con formulario */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex justify-center items-center">
-          <div className="bg-white rounded-xl shadow-md w-full max-w-md p-6">
-            <h2 className="text-xl font-semibold mb-2 text-blue-700">
-              {metodo === "cuadrados"
-                ? "Método de Cuadrados Medios"
-                : "Método de Multiplicador Constante"}
-            </h2>
-            <p className="text-gray-600 text-sm mb-4">
-              {explicaciones[metodo]}
-            </p>
-
-            {/* Inputs */}
-            <div className="flex flex-col gap-3 text-left">
-              <label>
-                <span className="block text-sm text-gray-700">Semilla (X₀)</span>
-                <input
-                  type="number"
-                  value={seed}
-                  onChange={(e) => setSeed(e.target.value)}
-                  className="border rounded p-2 w-full"
-                />
-              </label>
-              <label>
-                <span className="block text-sm text-gray-700">Dígitos (D)</span>
-                <input
-                  type="number"
-                  value={d}
-                  onChange={(e) => setD(e.target.value)}
-                  className="border rounded p-2 w-full"
-                />
-              </label>
-              <label>
-                <span className="block text-sm text-gray-700">
-                  Números a generar
-                </span>
-                <input
-                  type="number"
-                  value={cantidad}
-                  onChange={(e) => setCantidad(e.target.value)}
-                  className="border rounded p-2 w-full"
-                />
-              </label>
-              {metodo === "multiplicador" && (
-                <label>
-                  <span className="block text-sm text-gray-700">
-                    Constante (A)
-                  </span>
-                  <input
-                    type="number"
-                    value={multiplicador}
-                    onChange={(e) => setMultiplicador(e.target.value)}
-                    className="border rounded p-2 w-full"
-                  />
-                </label>
-              )}
-            </div>
-
-            {/* Botones del modal */}
-            <div className="flex justify-end gap-3 mt-5">
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 rounded bg-gray-200"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={generar}
-                className="px-4 py-2 rounded bg-blue-300 hover:bg-blue-400 font-medium"
-              >
-                Generar
-              </button>
-            </div>
-          </div>
+      {/* === RESULTADOS GLOBALES === */}
+      {resultados && (
+        <div className="mt-6 p-4 bg-blue-50 rounded-lg text-left">
+          <h2 className="text-lg font-semibold text-blue-700">
+            Resultados Generales
+          </h2>
+          <p><strong>Lotes simulados:</strong> {resultados.lotesSimulados}</p>
+          <p><strong>Tiempo promedio de producción:</strong> {resultados.tiempoPromedioProduccion} h</p>
+          <p><strong>Tiempo promedio de empaquetado:</strong> {resultados.tiempoPromedioEmpaquetado} h</p>
+          <p><strong>Tiempo promedio total por lote:</strong> {resultados.tiempoPromedioSistema} h</p>
+          <p><strong>Defectos totales:</strong> {resultados.defectosTotales}</p>
+          <p><strong>Promedio de defectos por lote:</strong> {resultados.promedioDefectos}</p>
         </div>
       )}
 
-      {/* Tabla de resultados de los métodos */}
-      {resultados.length > 0 && (
+      {/* === DETALLE POR LOTE EN TABLA === */}
+      {detalleLotes.length > 0 && (
         <div className="mt-6 overflow-x-auto">
-          <table className="table-auto border-collapse w-full text-center">
+          <h2 className="text-lg font-semibold text-blue-700 mb-2">
+            Detalle por lote
+          </h2>
+          <table className="table-auto border-collapse w-full text-center text-sm">
             <thead className="bg-blue-200">
               <tr>
-                <th className="px-2 py-1">n</th>
-                <th className="px-2 py-1">Xn</th>
-                <th className="px-2 py-1">
-                  {metodo === "cuadrados" ? "Yn = Xn²" : "Yn = Xn * A"}
-                </th>
-                <th className="px-2 py-1">Xn+1</th>
-                <th className="px-2 py-1">rn = 0.Xn+1</th>
+                <th className="px-2 py-1">Lote</th>
+                <th className="px-2 py-1">Producción (h)</th>
+                <th className="px-2 py-1">Empaquetado (h)</th>
+                <th className="px-2 py-1">Total (h)</th>
+                <th className="px-2 py-1">Defectos</th>
               </tr>
             </thead>
             <tbody className="bg-blue-50">
-              {resultados.map((r, idx) => (
-                <tr key={idx} className="hover:bg-blue-100">
-                  <td className="px-2 py-1">{r.n}</td>
-                  <td className="px-2 py-1">{r.Xi}</td>
-                  <td className="px-2 py-1">{r.Yi}</td>
-                  <td className="px-2 py-1">{r.Xi1}</td>
-                  <td className="px-2 py-1">{r.ri}</td>
+              {detalleLotes.map((lote) => (
+                <tr key={lote.lote}>
+                  <td>{lote.lote}</td>
+                  <td>{lote.produccion}</td>
+                  <td>{lote.empaquetado}</td>
+                  <td>{lote.total}</td>
+                  <td>{lote.defectos}</td>
                 </tr>
               ))}
             </tbody>
@@ -283,20 +223,47 @@ export default function GeneradorPseudo() {
         </div>
       )}
 
-      {/* Resultados de pruebas estadísticas */}
-      {detalles.length > 0 && (
-        <div className="mt-6 p-4 bg-blue-50 rounded-lg text-left">
-          <h3 className="text-lg font-semibold text-blue-700">
-            Resultados de las pruebas estadísticas
-          </h3>
-          {detalles.map((p, idx) => (
-            <div key={idx} className="mt-4 border-b border-blue-200 pb-2">
-              <p className="font-semibold">{p.titulo}</p>
-              <p>{p.calculos}</p>
-              <p className="mt-1 text-lg">{p.decision}</p>
-              <p className="text-gray-700 text-sm mt-1">{p.explicacion}</p>
-            </div>
-          ))}
+      {/* === GRÁFICAS DE RESULTADOS === */}
+      {detalleLotes.length > 0 && (
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Gráfica de tiempos */}
+          <div className="bg-white shadow rounded p-4">
+            <h3 className="text-blue-700 font-semibold mb-2">
+              Tiempo total por lote
+            </h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={detalleLotes}>
+                <CartesianGrid stroke="#ccc" />
+                <XAxis dataKey="lote" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="total"
+                  stroke="#8884d8"
+                  name="Tiempo total (h)"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Gráfica de defectos */}
+          <div className="bg-white shadow rounded p-4">
+            <h3 className="text-blue-700 font-semibold mb-2">
+              Defectos por lote
+            </h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={detalleLotes}>
+                <CartesianGrid stroke="#ccc" />
+                <XAxis dataKey="lote" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="defectos" fill="#82ca9d" name="Defectos" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       )}
     </div>
